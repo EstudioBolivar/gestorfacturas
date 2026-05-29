@@ -537,12 +537,12 @@ main{max-width:1160px;margin:0 auto;padding:clamp(26px,5vw,52px) clamp(16px,4vw,
 .q.on .dot.g{background:#1f3d29} .q.on .dot.r{background:var(--cream)}
 
 /* Table */
-.list-head{display:flex;align-items:center;gap:16px;margin:50px 0 16px;flex-wrap:wrap}
+.list-head{display:flex;align-items:center;gap:14px;margin:44px 0 6px;flex-wrap:wrap}
 .list-head h2{font-weight:800;font-size:24px;letter-spacing:-.03em}
 .tfilters{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.list-searchrow{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px;min-height:42px}
-.list-searchrow .search{margin-left:auto}
-#filterInfo{min-height:24px;display:flex;align-items:center}
+.list-head .search{margin-left:auto}
+.list-searchrow{display:flex;align-items:center;margin-bottom:2px;min-height:12px}
+#filterInfo{min-height:12px;display:flex;align-items:center}
 .tfsel{appearance:none;background:var(--cream) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238d8377' stroke-width='2.5' stroke-linecap='round'><path d='M6 9l6 6 6-6'/></svg>") no-repeat right 10px center;border:1.5px solid var(--line-strong);border-radius:999px;padding:7px 28px 7px 13px;font-size:12.5px;font-weight:600;color:var(--ink);cursor:pointer;font-family:inherit}
 .tfsel:focus{outline:none;border-color:var(--ink)}
 .status-toggle{display:inline-flex;border:1px solid var(--line-strong);border-radius:999px;overflow:hidden}
@@ -570,10 +570,15 @@ tbody td{padding:15px 14px;border-bottom:1px solid var(--line);text-align:right;
 tbody td:nth-child(3),tbody td:nth-child(4){text-align:left;white-space:normal}
 tbody tr:last-child td{border-bottom:none}
 tbody tr:hover{background:rgba(21,20,15,.03)}
-.st{display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:13px;cursor:pointer;color:var(--ink);transition:.14s}
+.st{display:inline-flex;align-items:center;gap:9px;font-weight:700;font-size:13px;cursor:pointer;color:var(--ink);transition:.14s}
 .st.g{color:var(--green)}
 .st.r{color:var(--orange)}
-.st:hover{opacity:.65}
+.st:hover{opacity:.8}
+.switch{width:30px;height:17px;border-radius:999px;background:var(--orange);position:relative;flex:none;transition:background .18s}
+.switch.on{background:var(--green)}
+.switch-knob{position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#fff;transition:left .18s}
+.switch.on .switch-knob{left:15px}
+.st-label{display:inline-block;min-width:68px}
 .fnum{font-weight:800}
 .cli{font-weight:700}
 .rowact{display:inline-flex;gap:1px}
@@ -714,13 +719,13 @@ tbody tr:hover{background:rgba(21,20,15,.03)}
   <div class="list-head">
     <h2>Facturas</h2>
     <div id="tableFilters" class="tfilters"></div>
-  </div>
-  <div class="list-searchrow">
-    <div id="filterInfo"></div>
     <div class="search">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
       <input id="searchBox" placeholder="Buscar por nº, cliente o importe…" oninput="onSearch(this.value)" autocomplete="off">
     </div>
+  </div>
+  <div class="list-searchrow">
+    <div id="filterInfo"></div>
   </div>
   <div class="tablewrap" id="tableWrap"></div>
   <footer class="app-footer">Hecho con todo el amor para que la Bolívar tenga todo ordenadín. ©2026. YGF Technologies®</footer>
@@ -888,6 +893,8 @@ function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(
 function quarterOf(dateStr){ const m=new Date(dateStr+"T00:00").getMonth(); return Math.floor(m/3)+1; }
 function yearOf(dateStr){ return new Date(dateStr+"T00:00").getFullYear(); }
 function fmtLongDate(dateStr){ const d=new Date(dateStr+"T00:00"); return d.getDate()+" de "+MESES[d.getMonth()]+" "+d.getFullYear(); }
+const MESES_ABBR=["ENE","FEB","MAR","ABR","MAY","JUN","JUL","AGO","SEP","OCT","NOV","DIC"];
+function fmtShortDate(dateStr){ const d=new Date(dateStr+"T00:00"); return d.getDate()+" "+MESES_ABBR[d.getMonth()]+" "+d.getFullYear(); }
 function calc(inv){
   const sub = (inv.items||[]).reduce((s,it)=> s + parseNum(it.price), 0);
   const iva = sub * (DB.settings.iva/100);
@@ -1027,9 +1034,9 @@ function render(){
   pageRows.forEach(inv=>{
     const c=calc(inv);
     html+=`<tr>
-      <td style="text-align:left"><span class="st ${inv.paid?'g':'r'}" onclick="togglePaid('${inv.id}')"><span class="dot ${inv.paid?'g':'r'}"></span>${inv.paid?'Cobrado':'Por cobrar'}</span></td>
+      <td style="text-align:left"><span class="st ${inv.paid?'g':'r'}" onclick="togglePaid('${inv.id}')" title="Clic para cambiar el estado"><span class="switch ${inv.paid?'on':''}"><span class="switch-knob"></span></span><span class="st-label">${inv.paid?'Cobrado':'Por cobrar'}</span></span></td>
       <td style="text-align:left" class="fnum">${escapeHtml(inv.number||'—')}</td>
-      <td style="text-align:left">${fmtLongDate(inv.date)}</td>
+      <td style="text-align:left">${fmtShortDate(inv.date)}</td>
       <td class="cli">${escapeHtml((inv.clientName||'—').toUpperCase())}</td>
       <td class="num">${eur(c.sub)}</td>
       <td class="num">${eur(c.iva)}</td>
