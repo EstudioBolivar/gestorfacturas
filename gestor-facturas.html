@@ -733,6 +733,7 @@ tbody tr:hover{background:rgba(21,20,15,.03)}
     <div id="filterInfo"></div>
   </div>
   <div class="tablewrap" id="tableWrap"></div>
+  <div id="tableSpacer" aria-hidden="true" style="height:0"></div>
   <footer class="app-footer">Hecho con todo el amor para que la Bolívar tenga todo ordenadín. ©2026. YGF Technologies®</footer>
 </main>
 
@@ -881,6 +882,7 @@ let selYear = new Date().getFullYear();
 let selQuarter = null;
 let searchQuery = "";
 let tablePage = 1;
+let fullPageH = 0;   // alto de la caja con una página llena (para reservar hueco)
 const PAGE_SIZE = 10;
 // filtros locales de la tabla: null = sincronizado con el dashboard
 let tblYear = null;      // número de año o null
@@ -1024,6 +1026,7 @@ function render(){
   }
   renderTableFilters(effYear, effQuarter, decoupled);
   const tw=document.getElementById("tableWrap");
+  const sp=document.getElementById("tableSpacer"); if(sp) sp.style.height="0px";
   if(!rows.length){
     tw.innerHTML = q
       ? `<div class="empty"><h3>Sin resultados</h3><p>No hay facturas que coincidan con “${escapeHtml(searchQuery.trim())}”.</p></div>`
@@ -1067,6 +1070,13 @@ function render(){
     </div>`;
   }
   tw.innerHTML=html;
+  // Reservar el hueco con un espaciador invisible para que el documento no cambie de
+  // altura al cambiar de página: así no se mueve nada y la caja se encoge de abajo a arriba.
+  if(sp){
+    const curH = tw.getBoundingClientRect().height;
+    if(totalPages>1 && pageRows.length===PAGE_SIZE) fullPageH = curH;
+    sp.style.height = (totalPages>1 && fullPageH && curH < fullPageH) ? (fullPageH-curH)+"px" : "0px";
+  }
 }
 function gotoPage(n){ tablePage=n; render(); }
 function renderTableFilters(effYear, effQuarter, decoupled){
