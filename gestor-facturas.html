@@ -731,6 +731,12 @@ tbody tr:hover{background:rgba(21,20,15,.03)}
         <button class="additem" onclick="addItem()">+ Añadir concepto</button>
       </div>
 
+      <div class="field">
+        <label>Gastos suplidos <span style="text-transform:none;font-weight:400;color:var(--faint)">· opcional, sin IVA ni IRPF</span></label>
+        <div class="items" id="supBox"></div>
+        <button class="additem" onclick="addSup()">+ Añadir gasto suplido</button>
+      </div>
+
       <div class="totbox" id="formTotals"></div>
 
       <div class="field" style="margin-top:16px;margin-bottom:0">
@@ -855,7 +861,8 @@ function calc(inv){
   const sub = (inv.items||[]).reduce((s,it)=> s + parseNum(it.price), 0);
   const iva = sub * (DB.settings.iva/100);
   const irpf = -(sub * (DB.settings.irpf/100));
-  return { sub, iva, irpf, total: sub+iva+irpf, neto: sub+irpf };
+  const suplidos = (inv.suplidos||[]).reduce((s,it)=> s + parseNum(it.price), 0);
+  return { sub, iva, irpf, suplidos, total: sub+iva+irpf+suplidos, neto: sub+irpf+suplidos };
 }
 function toast(msg){ const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove("show"),2200); }
 
@@ -1095,6 +1102,7 @@ function openForm(id){
   formPaid = f? !!f.paid : false; renderPaidToggle();
   const items = f && f.items && f.items.length ? f.items : [{concept:"",price:""}];
   renderItems(items);
+  renderSup(f && f.suplidos ? f.suplidos : []);
   document.getElementById("formOverlay").classList.add("open");
 }
 function closeForm(){ document.getElementById("formOverlay").classList.remove("open"); }
@@ -1102,6 +1110,11 @@ function renderItems(items){
   const box=document.getElementById("itemsBox"); box.innerHTML="";
   items.forEach(it=>addItem(it.concept,it.price));
   if(!items.length) addItem();
+  recalcForm();
+}
+function renderSup(sup){
+  const box=document.getElementById("supBox"); box.innerHTML="";
+  (sup||[]).forEach(it=>addSup(it.concept,it.price));
   recalcForm();
 }
 function addItem(concept="",price=""){
@@ -1114,19 +1127,37 @@ function addItem(concept="",price=""){
   box.appendChild(row);
   recalcForm();
 }
+function addSup(concept="",price=""){
+  const box=document.getElementById("supBox");
+  const row=document.createElement("div"); row.className="item";
+  row.innerHTML=`<input class="ic" placeholder="Ej. Taxis, Creative Cloud…" value="${escapeHtml(concept)}">
+    <input class="ip num" inputmode="decimal" placeholder="0,00" value="${price!==""&&price!=null?escapeHtml(String(price)):""}">
+    <button class="idel" title="Quitar" onclick="this.parentElement.remove();recalcForm()">✕</button>`;
+  row.querySelectorAll("input").forEach(inp=>inp.addEventListener("input",recalcForm));
+  box.appendChild(row);
+  recalcForm();
+}
 function readItems(){
   return [...document.querySelectorAll("#itemsBox .item")].map(r=>({
     concept:r.querySelector(".ic").value.trim(),
     price:r.querySelector(".ip").value
   })).filter(it=>it.concept!=="" || parseNum(it.price)!==0);
 }
+function readSup(){
+  return [...document.querySelectorAll("#supBox .item")].map(r=>({
+    concept:r.querySelector(".ic").value.trim(),
+    price:r.querySelector(".ip").value
+  })).filter(it=>it.concept!=="" || parseNum(it.price)!==0);
+}
 function recalcForm(){
-  const tmp={items:readItems()}; const c=calc(tmp);
-  document.getElementById("formTotals").innerHTML=`
+  const tmp={items:readItems(),suplidos:readSup()}; const c=calc(tmp);
+  let html=`
     <div class="tr"><span>Base imponible (subtotal)</span><span class="num">${eur(c.sub)}</span></div>
     <div class="tr"><span>IVA (${DB.settings.iva}%)</span><span class="num">${eur(c.iva)}</span></div>
-    <div class="tr"><span>Retención IRPF (${DB.settings.irpf}%)</span><span class="num">${eur(c.irpf)}</span></div>
-    <div class="tr grand"><span>Total a cobrar</span><span class="num">${eur(c.total)}</span></div>`;
+    <div class="tr"><span>Retención IRPF (${DB.settings.irpf}%)</span><span class="num">${eur(c.irpf)}</span></div>`;
+  if(c.suplidos) html+=`<div class="tr"><span>Gastos suplidos</span><span class="num">${eur(c.suplidos)}</span></div>`;
+  html+=`<div class="tr grand"><span>Total a cobrar</span><span class="num">${eur(c.total)}</span></div>`;
+  document.getElementById("formTotals").innerHTML=html;
 }
 function setPaid(v){ formPaid=v; renderPaidToggle(); }
 function renderPaidToggle(){
@@ -1152,7 +1183,7 @@ function saveInvoice(thenPdf){
     clientCity:document.getElementById("f_cliCity").value.trim(),
     clientCountry:document.getElementById("f_cliCountry").value.trim(),
     venc:document.getElementById("f_venc").value.trim()||DB.settings.venc,
-    items, paid:formPaid
+    items, suplidos:readSup(), paid:formPaid
   };
   let inv;
   if(editingId){ inv=DB.invoices.find(i=>i.id===editingId); Object.assign(inv,data); }
@@ -1305,10 +1336,22 @@ function generatePdf(inv,download){
   // --- Totales (posiciones FIJAS como el original) ---
   const LBX=308.18;
   const rowAt=(label,val,yy)=>{ doc.text(label,LBX,yy); doc.text(val,RX,yy,{align:"right"}); };
+  const totalSinSup = c.sub + c.iva + c.irpf;
   rowAt("Base Imponible", eur(c.sub), 512.01);
   rowAt("IVA ("+s.iva+"%)", eur(c.iva), 526.15);
   rowAt("Retención IRPF ("+s.irpf+"%)", eur(c.irpf), 540.29);
-  rowAt("TOTAL", eur(c.total), 558.53);
+  rowAt("TOTAL", eur(totalSinSup), 558.53);
+
+  // --- Gastos suplidos (bloque bajo el concepto, a la izquierda) ---
+  if((inv.suplidos||[]).length){
+    let sy=Math.max(ty+10, 512.01);
+    bold(); doc.text("GASTOS SUPLIDOS", 93.60, sy); reg(); sy+=14;
+    (inv.suplidos||[]).forEach(it=>{
+      doc.text(it.concept||"", 93.60, sy);
+      doc.text(eur(parseNum(it.price)), 285, sy, {align:"right"});
+      sy+=13;
+    });
+  }
 
   // --- Barra TOTAL A COBRAR (rect x=306.96 y=599.23 w=194.71 h=11.20; texto baseline 608.13) ---
   doc.setFillColor(...INK); doc.rect(306.96, 599.23, 194.71, 11.20, "F");
