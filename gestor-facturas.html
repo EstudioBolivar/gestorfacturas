@@ -474,7 +474,7 @@ main{max-width:1160px;margin:0 auto;padding:clamp(26px,5vw,52px) clamp(16px,4vw,
 .stat{flex:1;padding:0 22px;border-left:1px solid var(--line);display:flex;flex-direction:column;justify-content:flex-start}
 .stat:first-child{padding-left:0;border-left:none}
 .stat .lbl{font-size:12px;font-weight:600;letter-spacing:0;color:var(--muted);margin-bottom:12px}
-.stat .val{font-weight:800;font-size:30px;letter-spacing:-.035em;line-height:.95;color:var(--ink)}
+.stat .val{font-weight:800;font-size:30px;letter-spacing:-.035em;line-height:.95;color:var(--ink);white-space:nowrap}
 .stat .val.sm{font-size:25px}
 .stat .val.neto,.stat .val.cobrado{color:var(--green)}
 .stat .val.iva,.stat .val.pend{color:var(--orange)}
@@ -528,7 +528,7 @@ main{max-width:1160px;margin:0 auto;padding:clamp(26px,5vw,52px) clamp(16px,4vw,
 .q .row .num{font-weight:700}
 .q .row.tot{border-top:1px solid var(--line);margin-top:9px;padding-top:9px;font-weight:800;color:var(--ink)}
 .q.on .row.tot{border-top-color:rgba(249,245,234,.32)}
-.q .pill{display:flex;gap:14px;margin-top:13px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);font-weight:600}
+.q .pill{display:flex;gap:14px;margin-top:13px;flex-wrap:nowrap;white-space:nowrap;font-size:11.5px;color:var(--muted);font-weight:600}
 .q.on .pill{color:rgba(249,245,234,.85)}
 .tag{display:inline-flex;align-items:center;gap:6px;font-weight:700}
 .tag.g{color:var(--green)} .tag.r{color:var(--orange)}
@@ -565,7 +565,7 @@ main{max-width:1160px;margin:0 auto;padding:clamp(26px,5vw,52px) clamp(16px,4vw,
 .filterchip button{color:var(--faint);font-size:13px;line-height:1}
 .filterchip button:hover{color:var(--ink)}
 .tablewrap{border-radius:22px;overflow:hidden;background:var(--cream)}
-table{width:100%;border-collapse:collapse;font-size:14px}
+table{width:100%;border-collapse:collapse;font-size:14px;table-layout:fixed}
 thead th{text-align:right;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:15px 14px;border-bottom:1.5px solid var(--ink);white-space:nowrap}
 thead th:nth-child(1),thead th:nth-child(2),thead th:nth-child(3),thead th:nth-child(4){text-align:left}
 tbody td{padding:15px 14px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap;font-weight:500}
@@ -985,14 +985,16 @@ function render(){
         ${(!qi.length)?`<span style="color:var(--muted);font-size:11px">Sin facturas</span>`:""}
       </div>`;
     el.appendChild(sel);
+    const dz=document.createElement("button");
+    dz.className="q-zip";
+    dz.innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg> Descargar trimestre`;
     if(qi.length){
-      const dz=document.createElement("button");
-      dz.className="q-zip";
       dz.title="Descargar las "+qi.length+" facturas del trimestre en ZIP";
-      dz.innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg> Descargar trimestre`;
       dz.onclick=(e)=>{ e.stopPropagation(); downloadQuarterZip(selYear,q); };
-      el.appendChild(dz);
+    } else {
+      dz.style.visibility="hidden"; dz.style.pointerEvents="none"; dz.tabIndex=-1; dz.setAttribute("aria-hidden","true");
     }
+    el.appendChild(dz);
     qbox.appendChild(el);
   }
 
@@ -1038,7 +1040,7 @@ function render(){
   if(tablePage<1) tablePage=1;
   const startIdx=(tablePage-1)*PAGE_SIZE;
   const pageRows=rows.slice(startIdx, startIdx+PAGE_SIZE);
-  let html=`<table><thead><tr><th>Estado</th><th>Nº</th><th>Fecha</th><th>Cliente</th><th>Base</th><th>IVA</th><th>IRPF</th><th>Total</th><th></th></tr></thead><tbody>`;
+  let html=`<table><colgroup><col style="width:13%"><col style="width:7%"><col style="width:11%"><col style="width:17%"><col style="width:11%"><col style="width:10%"><col style="width:10%"><col style="width:11%"><col style="width:10%"></colgroup><thead><tr><th>Estado</th><th>Nº</th><th>Fecha</th><th>Cliente</th><th>Base</th><th>IVA</th><th>IRPF</th><th>Total</th><th></th></tr></thead><tbody>`;
   pageRows.forEach(inv=>{
     const c=calc(inv);
     html+=`<tr>
@@ -1108,9 +1110,10 @@ function aggregate(list){
   return {sub,iva,irpf,total,neto,cobrado,pendiente,cobradoN,pendienteN};
 }
 function yoyTag(cur, prev){
-  if(!prev || prev===0) return "";          // sin año anterior comparable
+  const ph = `<div class="yoy" style="visibility:hidden" aria-hidden="true">▲ +0% <span class="yoy-lbl">vs. año anterior</span></div>`;
+  if(!prev || prev===0) return ph;          // sin año anterior comparable
   const pct = (cur-prev)/Math.abs(prev)*100;
-  if(!isFinite(pct)) return "";
+  if(!isFinite(pct)) return ph;
   const up = pct>=0;
   const arrow = up ? "▲" : "▼";
   const cls = up ? "up" : "down";
