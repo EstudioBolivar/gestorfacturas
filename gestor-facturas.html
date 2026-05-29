@@ -458,7 +458,8 @@ header{position:sticky;top:0;z-index:40;background:rgba(231,228,221,.85);backdro
 main{max-width:1160px;margin:0 auto;padding:clamp(26px,5vw,52px) clamp(16px,4vw,52px)}
 
 /* Year head */
-.year-head{margin-bottom:28px}
+.year-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:28px}
+.year-head .btn{flex:none}
 .year-head h1{font-weight:800;font-size:clamp(52px,10vw,92px);letter-spacing:-.045em;line-height:.86}
 .year-head .sub{color:var(--muted);font-weight:600;margin-top:12px;font-size:15px}
 
@@ -539,6 +540,7 @@ main{max-width:1160px;margin:0 auto;padding:clamp(26px,5vw,52px) clamp(16px,4vw,
 /* Table */
 .list-head{display:flex;align-items:center;gap:14px;margin:44px 0 6px;flex-wrap:wrap}
 .list-head h2{font-weight:800;font-size:24px;letter-spacing:-.03em}
+.qhead{margin:46px 0 16px}
 .tfilters{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .list-head .search{margin-left:auto}
 .list-searchrow{display:flex;align-items:center;margin-bottom:2px;min-height:12px}
@@ -682,10 +684,6 @@ tbody tr:hover{background:rgba(21,20,15,.03)}
     <div class="brand"><img id="brandLogo" alt="Est. Bolívar"><span class="brand-label">Facturación</span></div>
     <div class="spacer"></div>
     <div class="yearsel" id="yearSel"></div>
-    <button class="btn primary" onclick="openForm()">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-      Nueva factura
-    </button>
     <button class="iconbtn" title="Bloquear" onclick="lockNow()">
       <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
     </button>
@@ -711,9 +709,16 @@ tbody tr:hover{background:rgba(21,20,15,.03)}
       <h1 id="yearTitle" class="num">2024</h1>
       <div class="sub" id="yearSub"></div>
     </div>
+    <button class="btn primary" onclick="openForm()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      Nueva factura
+    </button>
   </div>
   <div class="topgrid" id="topgrid"></div>
-  <div class="qtitle">Trimestres</div>
+  <div class="list-head qhead">
+    <h2>Trimestres</h2>
+    <div id="quarterYearSel" class="tfilters"></div>
+  </div>
   <div class="quarters" id="quarters"></div>
 
   <div class="list-head">
@@ -911,8 +916,10 @@ function render(){
   const yrs = [...new Set(DB.invoices.map(i=>yearOf(i.date)))];
   if(!yrs.includes(selYear)) yrs.push(selYear);
   yrs.sort((a,b)=>b-a);
-  const ys = document.getElementById("yearSel"); ys.innerHTML="";
-  yrs.forEach(y=>{ const b=document.createElement("button"); b.textContent=y; b.className=y===selYear?"on":""; b.onclick=()=>{selYear=y;selQuarter=null;tablePage=1;tblYear=null;tblQuarter=null;tblStatus="all";chartYears=new Set([y]);render();}; ys.appendChild(b); });
+  const yearOptsMain = yrs.map(y=>`<option value="${y}" ${y===selYear?"selected":""}>${y}</option>`).join("");
+  const yearSelHtml = `<select class="tfsel" onchange="setMainYear(this.value)" title="Año">${yearOptsMain}</select>`;
+  document.getElementById("yearSel").innerHTML = yearSelHtml;
+  const qy = document.getElementById("quarterYearSel"); if(qy) qy.innerHTML = yearSelHtml;
 
   const yearInv = DB.invoices.filter(i=>yearOf(i.date)===selYear);
   document.getElementById("yearTitle").textContent = selYear;
@@ -1061,7 +1068,7 @@ function render(){
   }
   tw.innerHTML=html;
 }
-function gotoPage(n){ tablePage=n; render(); document.querySelector(".list-head")?.scrollIntoView({behavior:"smooth",block:"start"}); }
+function gotoPage(n){ tablePage=n; render(); }
 function renderTableFilters(effYear, effQuarter, decoupled){
   const box=document.getElementById("tableFilters"); if(!box) return;
   const yrs=[...new Set(DB.invoices.map(i=>yearOf(i.date)))].sort((a,b)=>b-a);
@@ -1079,6 +1086,7 @@ function renderTableFilters(effYear, effQuarter, decoupled){
       <button class="unpaid ${tblStatus==='unpaid'?'on':''}" onclick="setTblStatus('unpaid')">Por cobrar</button>
     </div>`;
 }
+function setMainYear(v){ const y=Number(v); selYear=y; selQuarter=null; tablePage=1; tblYear=null; tblQuarter=null; tblStatus="all"; chartYears=new Set([y]); render(); }
 function setTblYear(v){ tblYear=Number(v); tablePage=1; render(); }
 function setTblQuarter(v){ tblQuarter=Number(v); tablePage=1; render(); } // 0 = todo el año
 function setTblStatus(v){ tblStatus=v; tablePage=1; render(); }
@@ -1557,12 +1565,23 @@ async function renderDocs(){
 document.querySelectorAll(".overlay").forEach(o=>o.addEventListener("click",e=>{ if(e.target===o) o.classList.remove("open"); }));
 document.addEventListener("keydown",e=>{ if(e.key==="Escape") document.querySelectorAll(".overlay.open").forEach(o=>o.classList.remove("open")); });
 
-/* clic fuera de los trimestres -> deseleccionar */
+/* clic fuera de los trimestres -> deseleccionar.
+   Se mira el origen del clic en fase de captura, porque algunos controles (p.ej. el
+   paginador) reconstruyen la tabla al instante y dejarían el e.target sin padres. */
+let _clickFueraTrim = true;
+document.addEventListener("click",e=>{
+  _clickFueraTrim = !(
+    e.target.closest("#quarters") ||      // dentro de los trimestres
+    e.target.closest(".filterchip") ||    // chip de filtro (tiene su propia X)
+    e.target.closest("#tableWrap") ||     // tabla o paginador
+    e.target.closest(".list-head") ||     // filtros/búsqueda de la tabla
+    e.target.closest(".list-searchrow")   // fila de info bajo el título
+  );
+}, true);
 document.addEventListener("click",e=>{
   if(selQuarter===null) return;
   if(document.querySelector(".overlay.open")) return;       // hay un modal abierto
-  if(e.target.closest("#quarters")) return;                 // clic dentro de los trimestres
-  if(e.target.closest(".filterchip")) return;               // clic en la chip de filtro (tiene su propia X)
+  if(!_clickFueraTrim) return;
   selQuarter=null; render();
 });
 
