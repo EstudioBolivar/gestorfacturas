@@ -537,7 +537,21 @@ main{max-width:1160px;margin:0 auto;padding:clamp(26px,5vw,52px) clamp(16px,4vw,
 .q.on .dot.g{background:#1f3d29} .q.on .dot.r{background:var(--cream)}
 
 /* Table */
-.list-head{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:50px 0 16px;flex-wrap:wrap}
+.list-head{display:flex;align-items:center;gap:16px;margin:50px 0 16px;flex-wrap:wrap}
+.list-head h2{font-weight:800;font-size:24px;letter-spacing:-.03em}
+.tfilters{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.list-searchrow{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px;min-height:42px}
+.list-searchrow .search{margin-left:auto}
+#filterInfo{min-height:24px;display:flex;align-items:center}
+.tfsel{appearance:none;background:var(--cream) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238d8377' stroke-width='2.5' stroke-linecap='round'><path d='M6 9l6 6 6-6'/></svg>") no-repeat right 10px center;border:1.5px solid var(--line-strong);border-radius:999px;padding:7px 28px 7px 13px;font-size:12.5px;font-weight:600;color:var(--ink);cursor:pointer;font-family:inherit}
+.tfsel:focus{outline:none;border-color:var(--ink)}
+.status-toggle{display:inline-flex;border:1px solid var(--line-strong);border-radius:999px;overflow:hidden}
+.status-toggle button{padding:6px 12px;font-size:11.5px;font-weight:600;color:var(--muted);border-right:1px solid var(--line)}
+.status-toggle button:last-child{border-right:none}
+.status-toggle button:hover:not(.on){color:var(--ink)}
+.status-toggle button.on.all{background:var(--ink);color:var(--cream)}
+.status-toggle button.on.paid{background:var(--green);color:var(--cream)}
+.status-toggle button.on.unpaid{background:var(--orange);color:var(--cream)}
 .list-head h2{font-weight:800;font-size:24px;letter-spacing:-.03em}
 .list-tools{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .search{display:flex;align-items:center;gap:8px;border:1.5px solid var(--line-strong);border-radius:999px;padding:8px 16px;background:var(--cream);transition:.16s;min-width:270px}
@@ -699,12 +713,13 @@ tbody tr:hover{background:rgba(21,20,15,.03)}
 
   <div class="list-head">
     <h2>Facturas</h2>
-    <div class="list-tools">
-      <div class="search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-        <input id="searchBox" placeholder="Buscar por nº, cliente o importe…" oninput="onSearch(this.value)" autocomplete="off">
-      </div>
-      <div id="filterInfo"></div>
+    <div id="tableFilters" class="tfilters"></div>
+  </div>
+  <div class="list-searchrow">
+    <div id="filterInfo"></div>
+    <div class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="searchBox" placeholder="Buscar por nº, cliente o importe…" oninput="onSearch(this.value)" autocomplete="off">
     </div>
   </div>
   <div class="tablewrap" id="tableWrap"></div>
@@ -857,6 +872,10 @@ let selQuarter = null;
 let searchQuery = "";
 let tablePage = 1;
 const PAGE_SIZE = 10;
+// filtros locales de la tabla: null = sincronizado con el dashboard
+let tblYear = null;      // número de año o null
+let tblQuarter = null;   // 1..4, 0 = "todos los trimestres", null = sincronizado
+let tblStatus = "all";   // all | paid | unpaid
 let chartMetric = "sub";              // sub | neto | total
 let chartYears = new Set([selYear]);  // años mostrados en la gráfica
 
@@ -886,7 +905,7 @@ function render(){
   if(!yrs.includes(selYear)) yrs.push(selYear);
   yrs.sort((a,b)=>b-a);
   const ys = document.getElementById("yearSel"); ys.innerHTML="";
-  yrs.forEach(y=>{ const b=document.createElement("button"); b.textContent=y; b.className=y===selYear?"on":""; b.onclick=()=>{selYear=y;selQuarter=null;tablePage=1;chartYears=new Set([y]);render();}; ys.appendChild(b); });
+  yrs.forEach(y=>{ const b=document.createElement("button"); b.textContent=y; b.className=y===selYear?"on":""; b.onclick=()=>{selYear=y;selQuarter=null;tablePage=1;tblYear=null;tblQuarter=null;tblStatus="all";chartYears=new Set([y]);render();}; ys.appendChild(b); });
 
   const yearInv = DB.invoices.filter(i=>yearOf(i.date)===selYear);
   document.getElementById("yearTitle").textContent = selYear;
@@ -937,7 +956,7 @@ function render(){
     el.className="q"+(selQuarter===q?" on":"");
     const sel=document.createElement("div");
     sel.className="q-sel";
-    sel.onclick=(e)=>{ e.stopPropagation(); selQuarter = selQuarter===q?null:q; tablePage=1; render(); };
+    sel.onclick=(e)=>{ e.stopPropagation(); selQuarter = selQuarter===q?null:q; tablePage=1; tblYear=null; tblQuarter=null; tblStatus="all"; render(); };
     sel.innerHTML=`
       <div class="qh"><div class="qn">T${q}</div><div class="qmonths">${qnames[q-1]}</div></div>
       <div class="row"><span>Bruto</span><span class="num">${eur(qa.sub)}</span></div>
@@ -974,15 +993,24 @@ function render(){
     return hay.includes(q);
   };
   let rows;
+  // año/trimestre/estado efectivos: override de la tabla si existe, si no el del dashboard
+  const effYear = tblYear!==null ? tblYear : selYear;
+  const effQuarter = tblQuarter!==null ? tblQuarter : selQuarter; // 0 = todos
+  const decoupled = (tblYear!==null) || (tblQuarter!==null) || (tblStatus!=="all");
   if(q){
     rows = DB.invoices.filter(matchInv).slice().sort((x,y)=> y.date.localeCompare(x.date) || String(y.number).localeCompare(String(x.number)));
     document.getElementById("filterInfo").innerHTML = `<span class="filterchip">${rows.length} resultado${rows.length===1?"":"s"} en todas las facturas <button onclick="clearSearch()" title="Limpiar búsqueda">✕</button></span>`;
   } else {
-    rows = (selQuarter? yearInv.filter(i=>quarterOf(i.date)===selQuarter) : yearInv)
-      .slice().sort((x,y)=> (y.date===x.date? String(y.number).localeCompare(String(x.number)) : y.date.localeCompare(x.date)));
-    document.getElementById("filterInfo").innerHTML = selQuarter
-      ? `<span class="filterchip">Trimestre T${selQuarter} <button onclick="selQuarter=null;render()" title="Quitar filtro">✕</button></span>` : "";
+    rows = DB.invoices.filter(i=>yearOf(i.date)===effYear);
+    if(effQuarter) rows = rows.filter(i=>quarterOf(i.date)===effQuarter);
+    if(tblStatus==="paid") rows = rows.filter(i=>i.paid);
+    else if(tblStatus==="unpaid") rows = rows.filter(i=>!i.paid);
+    rows = rows.slice().sort((x,y)=> (y.date===x.date? String(y.number).localeCompare(String(x.number)) : y.date.localeCompare(x.date)));
+    document.getElementById("filterInfo").innerHTML = decoupled
+      ? `<span class="filterchip">Filtro propio de la tabla <button onclick="resetTableFilters()" title="Volver a sincronizar con el panel">✕ sincronizar</button></span>`
+      : "";
   }
+  renderTableFilters(effYear, effQuarter, decoupled);
   const tw=document.getElementById("tableWrap");
   if(!rows.length){
     tw.innerHTML = q
@@ -1029,6 +1057,27 @@ function render(){
   tw.innerHTML=html;
 }
 function gotoPage(n){ tablePage=n; render(); document.querySelector(".list-head")?.scrollIntoView({behavior:"smooth",block:"start"}); }
+function renderTableFilters(effYear, effQuarter, decoupled){
+  const box=document.getElementById("tableFilters"); if(!box) return;
+  const yrs=[...new Set(DB.invoices.map(i=>yearOf(i.date)))].sort((a,b)=>b-a);
+  if(!yrs.includes(effYear)) yrs.unshift(effYear);
+  const yearOpts=yrs.map(y=>`<option value="${y}" ${y===effYear?"selected":""}>${y}</option>`).join("");
+  const qLabels={0:"Todo el año",1:"T1",2:"T2",3:"T3",4:"T4"};
+  const qVal = effQuarter||0;
+  const qOpts=Object.entries(qLabels).map(([v,l])=>`<option value="${v}" ${Number(v)===qVal?"selected":""}>${l}</option>`).join("");
+  box.innerHTML=`
+    <select class="tfsel" onchange="setTblYear(this.value)" title="Año">${yearOpts}</select>
+    <select class="tfsel" onchange="setTblQuarter(this.value)" title="Trimestre">${qOpts}</select>
+    <div class="status-toggle">
+      <button class="all ${tblStatus==='all'?'on':''}" onclick="setTblStatus('all')">Todas</button>
+      <button class="paid ${tblStatus==='paid'?'on':''}" onclick="setTblStatus('paid')">Cobradas</button>
+      <button class="unpaid ${tblStatus==='unpaid'?'on':''}" onclick="setTblStatus('unpaid')">Por cobrar</button>
+    </div>`;
+}
+function setTblYear(v){ tblYear=Number(v); tablePage=1; render(); }
+function setTblQuarter(v){ tblQuarter=Number(v); tablePage=1; render(); } // 0 = todo el año
+function setTblStatus(v){ tblStatus=v; tablePage=1; render(); }
+function resetTableFilters(){ tblYear=null; tblQuarter=null; tblStatus="all"; tablePage=1; render(); }
 function aggregate(list){
   let sub=0,iva=0,irpf=0,total=0,neto=0,cobrado=0,pendiente=0,cobradoN=0,pendienteN=0;
   list.forEach(inv=>{ const c=calc(inv); sub+=c.sub;iva+=c.iva;irpf+=c.irpf;total+=c.total;neto+=c.neto;
