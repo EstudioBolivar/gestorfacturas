@@ -1277,11 +1277,6 @@ function render(){
   const curQ = Math.floor(new Date().getMonth()/3)+1;
   const qaCur = aggregate(yearInv.filter(i=>quarterOf(i.date)===curQ));
   // comparativa interanual del neto
-  const prevYearInv = DB.invoices.filter(i=>yearOf(i.date)===selYear-1);
-  const aPrev = aggregate(prevYearInv);
-  const qaPrev = aggregate(prevYearInv.filter(i=>quarterOf(i.date)===curQ));
-  const yoyYear = yoyTag(a.neto, aPrev.neto);
-  const yoyQ = yoyTag(qaCur.neto, qaPrev.neto);
   // IVA neto del trimestre: repercutido (emitidas) − soportado (gastos)
   const gqCur = aggExp(DB.expenses.filter(e=>yearOf(e.date)===selYear && quarterOf(e.date)===curQ));
   const ivaNetoQ = qaCur.iva - gqCur.iva;
@@ -1291,7 +1286,7 @@ function render(){
         <div class="panel-h">La mirada del año</div>
         <div class="stat-row">
           <div class="stat"><div class="lbl">Facturado bruto</div><div class="val num">${eurK(a.sub)}</div><div class="meta">${yearInv.length} ${yearInv.length===1?"factura":"facturas"}</div></div>
-          <div class="stat"><div class="lbl">Facturado neto</div><div class="val neto num">${eurK(a.neto)}</div><div class="meta">${eurShort(a.neto/12)}/mes</div>${yoyYear}</div>
+          <div class="stat"><div class="lbl">Facturado neto</div><div class="val neto num">${eurK(a.neto)}</div><div class="meta">${eurShort(a.neto/12)}/mes</div></div>
         </div>
       </div>
       <div class="panel cobro">
