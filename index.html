@@ -1712,12 +1712,11 @@ function saveInvoice(thenPdf){
 function downloadPdf(id){ const inv=DB.invoices.find(i=>i.id===id); if(inv) generatePdf(inv,true); }
 let _pdfPreviewUrl=null;
 function previewPdf(id){
+  // mismo visor de canvas que la vista previa de gastos: solo la factura,
+  // sin la botonera del navegador ni su diálogo de impresión
   const inv=DB.invoices.find(i=>i.id===id); if(!inv) return;
   const doc=generatePdf(inv,false); if(!doc) return;
-  if(_pdfPreviewUrl) URL.revokeObjectURL(_pdfPreviewUrl);
-  _pdfPreviewUrl=URL.createObjectURL(doc.output("blob"));
-  document.getElementById("pdfPreviewFrame").src=_pdfPreviewUrl;
-  document.getElementById("pdfOverlay").classList.add("open");
+  openExpPdfViewer({name:invoiceFileName(inv), data:doc.output("datauristring")});
 }
 function closePdfPreview(){
   document.getElementById("pdfOverlay").classList.remove("open");
