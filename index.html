@@ -599,7 +599,6 @@ table{width:100%;border-collapse:collapse;font-size:13.5px;table-layout:fixed}
 thead th{text-align:right;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:12px 14px;border-bottom:.5px solid var(--border);white-space:nowrap;background:var(--surface)}
 thead th:nth-child(1),thead th:nth-child(2),thead th:nth-child(3),thead th:nth-child(4){text-align:left}
 tbody td{padding:13px 14px;border-bottom:.5px solid var(--border);text-align:right;white-space:nowrap;font-weight:500;color:var(--text)}
-tbody td:nth-child(3),tbody td:nth-child(4){text-align:left;white-space:normal}
 tbody tr:last-child td{border-bottom:none}
 tbody tr:hover{background:var(--bg)}
 .st{display:inline-flex;align-items:center;gap:7px;font-weight:700;font-size:12.5px;cursor:pointer;color:var(--text);transition:.14s}
@@ -1171,7 +1170,7 @@ function quarterOf(dateStr){ const m=new Date(dateStr+"T00:00").getMonth(); retu
 function yearOf(dateStr){ return new Date(dateStr+"T00:00").getFullYear(); }
 function fmtLongDate(dateStr){ const d=new Date(dateStr+"T00:00"); return d.getDate()+" de "+MESES[d.getMonth()]+" "+d.getFullYear(); }
 const MESES_ABBR=["ENE","FEB","MAR","ABR","MAY","JUN","JUL","AGO","SEP","OCT","NOV","DIC"];
-function fmtShortDate(dateStr){ const d=new Date(dateStr+"T00:00"); return d.getDate()+" "+MESES_ABBR[d.getMonth()]+" "+d.getFullYear(); }
+function fmtShortDate(dateStr){ const d=new Date(dateStr+"T00:00"); return d.getDate()+" "+MESES_ABBR[d.getMonth()]+" / "+String(d.getFullYear()).slice(-2); }
 // redondeo a céntimos: cada cuota se redondea ANTES de sumar, de modo que
 // el total sea exactamente la suma de las cifras que se imprimen
 const r2 = x => Math.round((x + Number.EPSILON) * 100) / 100;
@@ -1401,7 +1400,7 @@ function render(){
       <td style="text-align:left"><span class="st ${inv.paid?'g':'r'}" onclick="togglePaid('${inv.id}')" title="Clic para cambiar el estado"><span class="switch ${inv.paid?'on':''}"><span class="switch-knob"></span></span><span class="st-label">${inv.paid?'Cobrado':'Por cobrar'}</span></span></td>
       <td style="text-align:left" class="fnum">${escapeHtml(inv.number||'—')}</td>
       <td style="text-align:left">${fmtShortDate(inv.date)}</td>
-      <td class="cli">${escapeHtml((inv.clientName||'—').toUpperCase())}</td>
+      <td class="cli" style="text-align:left;white-space:normal">${escapeHtml((inv.clientName||'—').toUpperCase())}</td>
       <td class="num">${eur(c.sub)}</td>
       <td class="num">${eur(c.iva)}</td>
       <td class="num">${eur(c.irpf)}</td>
