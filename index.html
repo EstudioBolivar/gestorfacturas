@@ -613,6 +613,8 @@ tbody tr:hover{background:var(--bg)}
 .cli{font-weight:700;color:var(--text)}
 .pdf-drop{width:100%;display:flex;align-items:center;gap:14px;padding:16px 18px;border:1.5px dashed var(--hint);border-radius:12px;background:var(--bg);cursor:pointer;text-align:left;color:var(--text);transition:border-color .15s}
 .pdf-drop:hover{border-color:var(--text)}
+.pdf-drop.dragging{border-color:var(--text);background:var(--surface);box-shadow:var(--shadow-md)}
+.pdf-drop.dragging *{pointer-events:none}
 .pdf-drop .pd-txt{display:flex;flex-direction:column;gap:2px}
 .pdf-drop .pd-txt strong{font-size:14px;font-weight:700}
 .pdf-drop .pd-txt span{font-size:12px;color:var(--muted)}
@@ -1956,11 +1958,33 @@ function renderExpPdfBox(){
   } else {
     box.innerHTML=`<button class="pdf-drop" onclick="document.getElementById('gPdfInput').click()">
       <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
-      <span class="pd-txt"><strong>Subir PDF de la factura</strong><span>lee los datos, rellena los campos y deja el archivo adjunto</span></span>
+      <span class="pd-txt"><strong>Subir PDF de la factura</strong><span>haz clic o arrástralo aquí · lee los datos, rellena los campos y deja el archivo adjunto</span></span>
     </button>`;
   }
 }
 function removeExpPdf(){ _expPdf=null; renderExpPdfBox(); }
+/* arrastrar y soltar el PDF sobre la cajita de subida (delegado en el contenedor,
+   porque la cajita se re-pinta con cada render) */
+(function(){
+  const box=document.getElementById("gPdfBox"); if(!box) return;
+  const isPdf=f=>f && (f.type==="application/pdf" || /\.pdf$/i.test(f.name||""));
+  const zone=()=>box.querySelector(".pdf-drop");
+  box.addEventListener("dragover",e=>{ e.preventDefault(); zone()?.classList.add("dragging"); });
+  box.addEventListener("dragleave",e=>{ if(!box.contains(e.relatedTarget)) zone()?.classList.remove("dragging"); });
+  box.addEventListener("drop",e=>{
+    e.preventDefault();
+    zone()?.classList.remove("dragging");
+    const f=[...((e.dataTransfer&&e.dataTransfer.files)||[])].find(isPdf);
+    if(!f){ toast("Suelta un archivo PDF"); return; }
+    expPdfSelected(f);
+  });
+  // mientras el modal de gasto esté abierto, un drop fuera de la cajita no debe
+  // hacer que el navegador abra el PDF y se pierda lo escrito
+  ["dragover","drop"].forEach(ev=>document.addEventListener(ev,e=>{
+    const ov=document.getElementById("expOverlay");
+    if(ov && ov.classList.contains("open")) e.preventDefault();
+  }));
+})();
 async function expPdfSelected(file){
   // 1) leer datos y rellenar campos
   try{
