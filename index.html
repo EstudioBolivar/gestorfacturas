@@ -1354,6 +1354,13 @@ function render(){
   const ys=document.getElementById("yearSel"); if(ys) ys.innerHTML=yearSelHtml;
   requestAnimationFrame(()=>{
     syncColHeights();
+    // si el contenido nuevo es más corto (trimestre vacío, filtro con pocas filas),
+    // reservar hueco con el espaciador para que el scroll se pueda mantener
+    const sp=document.getElementById("tableSpacer");
+    if(sp){
+      const deficit=Math.ceil(_scrollY + window.innerHeight - document.documentElement.scrollHeight);
+      if(deficit>0) sp.style.height=((parseFloat(sp.style.height)||0)+deficit)+"px";
+    }
     // restaurar el scroll antes del repintado: sin salto visible
     if(Math.abs(window.scrollY-_scrollY)>1) window.scrollTo(0,_scrollY);
   });
