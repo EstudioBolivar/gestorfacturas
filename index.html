@@ -438,6 +438,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   --card:var(--surface);
 }
 *{box-sizing:border-box;margin:0;padding:0}
+html{overflow-anchor:none}
 html,body{background:var(--bg);color:var(--text);font-family:var(--sans);-webkit-font-smoothing:antialiased;font-size:15px;line-height:1.5;font-weight:400}
 body{padding:0 0 96px}
 .num{font-variant-numeric:tabular-nums;letter-spacing:-.02em}
@@ -1259,10 +1260,21 @@ function syncColHeights(){
     cv.innerHTML=buildChartSvg(window._chartSeries,H);
   }
 }
+// mantiene el scroll tras un re-render: si la página nueva es más corta,
+// reserva el hueco que falte en el espaciador y restaura la posición
+function restoreScroll(y){
+  const sp=document.getElementById("tableSpacer");
+  if(sp){
+    const deficit=Math.ceil(y + window.innerHeight - document.documentElement.scrollHeight);
+    if(deficit>0) sp.style.height=((parseFloat(sp.style.height)||0)+deficit)+"px";
+  }
+  if(Math.abs(window.scrollY-y)>1) window.scrollTo(0,y);
+}
 function render(){
-  // recordar el scroll: el re-render encoge la página un instante (las alturas
-  // sincronizadas se recomponen en el rAF) y el navegador recortaría el scroll
+  // recordar el scroll: el re-render encoge la página un instante y el
+  // navegador recortaría la posición; se restaura de forma síncrona al final
   const _scrollY=window.scrollY;
+  try{
   document.getElementById("brandLogo").src = DB.settings.logoImg || LOGO_DATAURL;
   // años disponibles
   const yrs = [...new Set(DB.invoices.map(i=>yearOf(i.date)))];
@@ -1354,15 +1366,8 @@ function render(){
   const ys=document.getElementById("yearSel"); if(ys) ys.innerHTML=yearSelHtml;
   requestAnimationFrame(()=>{
     syncColHeights();
-    // si el contenido nuevo es más corto (trimestre vacío, filtro con pocas filas),
-    // reservar hueco con el espaciador para que el scroll se pueda mantener
-    const sp=document.getElementById("tableSpacer");
-    if(sp){
-      const deficit=Math.ceil(_scrollY + window.innerHeight - document.documentElement.scrollHeight);
-      if(deficit>0) sp.style.height=((parseFloat(sp.style.height)||0)+deficit)+"px";
-    }
-    // restaurar el scroll antes del repintado: sin salto visible
-    if(Math.abs(window.scrollY-_scrollY)>1) window.scrollTo(0,_scrollY);
+    // segunda pasada tras recomponer alturas, por si el ajuste movió algo
+    restoreScroll(_scrollY);
   });
 
   // búsqueda + filtro
@@ -1444,6 +1449,11 @@ function render(){
     const curH = tw.getBoundingClientRect().height;
     if(totalPages>1 && pageRows.length===PAGE_SIZE) fullPageH = curH;
     sp.style.height = (totalPages>1 && fullPageH && curH < fullPageH) ? (fullPageH-curH)+"px" : "0px";
+  }
+  }finally{
+    // síncrono: se ejecuta también en los returns tempranos (tabla vacía, etc.),
+    // antes de que el navegador maquete y pueda recortar el scroll
+    restoreScroll(_scrollY);
   }
 }
 function gotoPage(n){ tablePage=n; render(); }
