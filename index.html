@@ -1021,6 +1021,34 @@ const SUPA_URL="https://wfrtycpqtleolxhpyrzi.supabase.co";
 const SUPA_KEY="sb_publishable_q0JqbvYpSmyfUhEz-8ycPw_mWRaE3KN";
 const sb = window.supabase.createClient(SUPA_URL, SUPA_KEY, { auth:{ persistSession:true, autoRefreshToken:true } });
 let currentUser=null;
+let _pdfInStorage=new Set();   // gastos cuyo PDF ya está en el almacén de la nube
+let _pdfDirty=new Set();       // gastos cuyo PDF hay que subir al almacén
+function dataUrlToBlob(dataUrl){
+  const parts=String(dataUrl).split(","); const mime=((parts[0]||"").match(/:(.*?);/)||[])[1]||"application/pdf";
+  const bin=atob(parts[1]||""); const arr=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+  return new Blob([arr],{type:mime});
+}
+function blobToDataUrl(blob){ return new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=rej; fr.readAsDataURL(blob); }); }
+async function uploadExpPdf(id,dataUrl){
+  const { error } = await sb.storage.from("facturas").upload(currentUser.id+"/"+id+".pdf", dataUrlToBlob(dataUrl), { contentType:"application/pdf", upsert:true });
+  if(error) throw error;
+  _pdfInStorage.add(id);
+}
+async function fetchExpPdf(id){
+  const { data, error } = await sb.storage.from("facturas").download(currentUser.id+"/"+id+".pdf");
+  if(error || !data) throw (error||new Error("sin datos"));
+  return await blobToDataUrl(data);
+}
+function removeExpPdfStorage(id){
+  if(currentUser){ try{ sb.storage.from("facturas").remove([currentUser.id+"/"+id+".pdf"]); }catch(e){} }
+  _pdfInStorage.delete(id); _pdfDirty.delete(id);
+}
+function lightDB(){
+  const c=JSON.parse(JSON.stringify(DB));
+  (c.expenses||[]).forEach(e=>{ if(_pdfInStorage.has(e.id)) delete e.pdfData; });
+  return c;
+}
 let _cloudTimer=null;
 function save(){
   try{ localStorage.setItem(LS_KEY, JSON.stringify(DB)); }catch(e){}
@@ -1035,7 +1063,14 @@ async function pushCloud(){
   if(!currentUser) return;
   try{
     setSyncState("saving");
-    const { error } = await sb.from("user_data").upsert({ user_id: currentUser.id, data: DB, updated_at: new Date().toISOString() });
+    for(const id of Array.from(_pdfDirty)){
+      const e=DB.expenses.find(x=>x.id===id);
+      if(e && e.pdfData){
+        try{ await uploadExpPdf(id, e.pdfData); _pdfDirty.delete(id); }
+        catch(err){ console.error("Nube (PDF):", err); }
+      } else { _pdfDirty.delete(id); }
+    }
+    const { error } = await sb.from("user_data").upsert({ user_id: currentUser.id, data: lightDB(), updated_at: new Date().toISOString() });
     if(error) throw error;
     setSyncState("saved");
   }catch(e){ console.error("Nube (guardar):", e); setSyncState("error"); }
@@ -1153,10 +1188,12 @@ function renderExpTable(effYear, effQuarter, q){
   html+="</tbody></table>";
   tw.innerHTML=html;
 }
-function previewExpPdf(id){
+async function previewExpPdf(id){
   const e=DB.expenses.find(x=>x.id===id);
-  if(!e||!e.pdfData){ toast("Este gasto no tiene PDF adjunto"); return; }
-  openExpPdfViewer({name:e.pdfName||"factura.pdf", data:e.pdfData});
+  if(!e || (!e.pdfData && !e.pdfName)){ toast("Este gasto no tiene PDF adjunto"); return; }
+  let d=e.pdfData;
+  if(!d){ try{ d=await fetchExpPdf(id); e.pdfData=d; _pdfInStorage.add(id); }catch(err){ toast("No se pudo cargar el PDF"); return; } }
+  openExpPdfViewer({name:e.pdfName||"factura.pdf", data:d});
 }
 // título "FACT./26" con el año clickable para cambiar entre años
 function renderYearTitle(){
@@ -1776,7 +1813,7 @@ function openExpForm(id){
   document.getElementById("g_base").value=e? String(e.base).replace(".",",") : "";
   document.getElementById("g_iva").value=e? String(e.iva).replace(".",",") : "";
   _gIvaTouched=!!e;
-  _expPdf = e && e.pdfData ? {name:e.pdfName||"factura.pdf", data:e.pdfData} : null;
+  _expPdf = e && (e.pdfData||e.pdfName) ? {name:e.pdfName||"factura.pdf", data:e.pdfData, eid:e.id} : null;
   renderExpPdfBox();
   document.getElementById("provList").innerHTML=[...new Set(DB.expenses.map(x=>x.provider).filter(Boolean))].map(p=>`<option value="${escapeHtml(p)}">`).join("");
   recalcExp(false, true);
@@ -1807,8 +1844,11 @@ function saveExpense(){
   if(!base){ toast("Indica la base imponible"); return; }
   const data={provider,date,concept:document.getElementById("g_concept").value.trim(),base,iva,
     pdfName:_expPdf?_expPdf.name:undefined, pdfData:_expPdf?_expPdf.data:undefined};
-  if(expEditingId){ const e=DB.expenses.find(x=>x.id===expEditingId); Object.assign(e,data); }
-  else DB.expenses.push({id:uid(),...data});
+  let _savedId;
+  if(expEditingId){ const e=DB.expenses.find(x=>x.id===expEditingId); Object.assign(e,data); _savedId=expEditingId; }
+  else { _savedId=uid(); DB.expenses.push({id:_savedId,...data}); }
+  if(_expPdf && _expPdf.data) _pdfDirty.add(_savedId);
+  else if(!_expPdf) removeExpPdfStorage(_savedId);
   save();
   selYear=yearOf(date); selQuarter=null;
   tblKind="sop"; tablePage=1;   // mostrar el gasto recién guardado en la tabla
@@ -1819,7 +1859,7 @@ function saveExpense(){
 function delExpense(id){
   const e=DB.expenses.find(x=>x.id===id);
   if(e && confirm("¿Eliminar el gasto de "+(e.provider||"proveedor desconocido")+" ("+eur(parseNum(e.base)+parseNum(e.iva))+")?")){
-    DB.expenses=DB.expenses.filter(x=>x.id!==id); save(); render(); toast("Gasto eliminado");
+    removeExpPdfStorage(id); DB.expenses=DB.expenses.filter(x=>x.id!==id); save(); render(); toast("Gasto eliminado");
   }
 }
 
@@ -1829,6 +1869,8 @@ let _expPdf=null;                // {name, data} pendiente de guardar en el form
 async function openExpPdfViewer(pdfObj){
   const src=pdfObj||_expPdf;
   if(!src) return;
+  if(!src.data && src.eid){ try{ src.data=await fetchExpPdf(src.eid); }catch(err){ toast("No se pudo cargar el PDF"); return; } }
+  if(!src.data){ toast("No se pudo cargar el PDF"); return; }
   loadPdfJs(async ()=>{
     try{
       const b64=String(src.data).split(",")[1];
@@ -1904,10 +1946,12 @@ async function expPdfSelected(file){
   fr.onload=()=>{ _expPdf={name:file.name, data:fr.result}; renderExpPdfBox(); };
   fr.readAsDataURL(file);
 }
-function downloadExpPdf(id){
+async function downloadExpPdf(id){
   const e=DB.expenses.find(x=>x.id===id);
-  if(!e||!e.pdfData){ toast("Este gasto no tiene PDF adjunto"); return; }
-  const a=document.createElement("a"); a.href=e.pdfData; a.download=e.pdfName||"factura.pdf"; a.click();
+  if(!e || (!e.pdfData && !e.pdfName)){ toast("Este gasto no tiene PDF adjunto"); return; }
+  let d=e.pdfData;
+  if(!d){ try{ d=await fetchExpPdf(id); e.pdfData=d; _pdfInStorage.add(id); }catch(err){ toast("No se pudo cargar el PDF"); return; } }
+  const a=document.createElement("a"); a.href=d; a.download=e.pdfName||"factura.pdf"; a.click();
 }
 function parseExpenseLines(lines){
   const out={};
@@ -2087,6 +2131,8 @@ function importData(e){
     if(confirm("Esto reemplazará todos los datos actuales por los de la copia ("+clean.invoices.length+" facturas, "+clean.expenses.length+" gastos). ¿Continuar?")){
       DB={ invoices:clean.invoices, expenses:clean.expenses,
            settings:Object.assign({},DEFAULTS.settings,clean.settings) };
+      _pdfInStorage=new Set(); _pdfDirty=new Set();
+      (DB.expenses||[]).forEach(x=>{ if(x.pdfData) _pdfDirty.add(x.id); });
       save(); render();
       const sk=clean._skipped.inv+clean._skipped.exp;
       toast("Datos importados ("+DB.invoices.length+" facturas)"+(sk?" · "+sk+" entradas no válidas descartadas":""));
@@ -2346,12 +2392,14 @@ async function downloadQuarterZip(year,q){
     fEmit.file(invoiceFileName(inv), doc.output("arraybuffer"));
   }
   const fSop=zip.folder("Facturas soportadas");
-  exps.forEach(e=>{
-    if(!e.pdfData) return;
-    const b64=String(e.pdfData).split(",")[1]; if(!b64) return;
+  for(const e of exps){
+    let d=e.pdfData;
+    if(!d && e.pdfName){ try{ d=await fetchExpPdf(e.id); }catch(err){} }
+    if(!d) continue;
+    const b64=String(d).split(",")[1]; if(!b64) continue;
     const name=fnameSafe(e.date+"_"+(e.provider||"gasto"))+".pdf";
     fSop.file(name, b64, {base64:true});
-  });
+  }
   zip.file(fnameSafe("Informe_"+year+"-T"+q)+".xlsx", await buildQuarterXlsx(year,q,list,exps));
   const blob=await zip.generateAsync({type:"blob"});
   const url=URL.createObjectURL(blob); const a=document.createElement("a");
@@ -2510,6 +2558,15 @@ async function onSignedIn(user){
   hideAuth();
   render();
   setSyncState("saved");
+  hydrateAndSyncPdfs();
+}
+async function hydrateAndSyncPdfs(){
+  for(const e of (DB.expenses||[])){
+    if(!e.pdfData && e.pdfName){
+      try{ e.pdfData=await fetchExpPdf(e.id); _pdfInStorage.add(e.id); _pdfDirty.delete(e.id); }catch(err){}
+    }
+  }
+  if(_pdfDirty.size){ try{ await pushCloud(); }catch(e){} }
 }
 async function loadCloud(){
   try{
@@ -2524,6 +2581,8 @@ async function loadCloud(){
     } else {
       await sb.from("user_data").upsert({ user_id: currentUser.id, data: DB, updated_at:new Date().toISOString() });
     }
+    _pdfInStorage=new Set(); _pdfDirty=new Set();
+    (DB.expenses||[]).forEach(e=>{ if(e.pdfData) _pdfDirty.add(e.id); });
   }catch(e){ console.error("Nube (cargar):", e); toast("No se pudieron cargar los datos de la nube"); }
 }
 async function lockNow(){
