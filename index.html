@@ -1260,6 +1260,9 @@ function syncColHeights(){
   }
 }
 function render(){
+  // recordar el scroll: el re-render encoge la página un instante (las alturas
+  // sincronizadas se recomponen en el rAF) y el navegador recortaría el scroll
+  const _scrollY=window.scrollY;
   document.getElementById("brandLogo").src = DB.settings.logoImg || LOGO_DATAURL;
   // años disponibles
   const yrs = [...new Set(DB.invoices.map(i=>yearOf(i.date)))];
@@ -1351,6 +1354,8 @@ function render(){
   const ys=document.getElementById("yearSel"); if(ys) ys.innerHTML=yearSelHtml;
   requestAnimationFrame(()=>{
     syncColHeights();
+    // restaurar el scroll antes del repintado: sin salto visible
+    if(Math.abs(window.scrollY-_scrollY)>1) window.scrollTo(0,_scrollY);
   });
 
   // búsqueda + filtro
