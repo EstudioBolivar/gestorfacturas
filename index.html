@@ -807,7 +807,10 @@ tbody td:last-child{padding-left:4px;padding-right:10px}
         <div class="field"><label>Nº de factura</label><input id="f_num" placeholder="0068"></div>
         <div class="field"><label>Fecha</label><input id="f_date" type="date"></div>
       </div>
-      <div class="field"><label>Nombre de cliente</label><input id="f_cliName" list="clientsList" autocomplete="off" oninput="onClientName(this.value)" placeholder="Empieza a escribir…"><datalist id="clientsList"></datalist></div>
+      <div class="grid2">
+        <div class="field"><label>Nombre de cliente</label><input id="f_cliName" list="clientsList" autocomplete="off" oninput="onClientName(this.value)" placeholder="Empieza a escribir…"><datalist id="clientsList"></datalist></div>
+        <div class="field"><label>Alias</label><input id="f_cliAlias" placeholder="Alias (opcional)"></div>
+      </div>
       <div class="grid2">
         <div class="field"><label>CIF / NIF cliente</label><input id="f_cliCif" placeholder="B00000000"></div>
         <div class="field"><label>Vencimiento</label><input id="f_venc" placeholder="30 días naturales"></div>
@@ -1375,7 +1378,7 @@ function render(){
   const matchInv = inv => {
     if(!q) return true;
     const c=calc(inv);
-    const hay=[inv.number, inv.clientName, String(c.sub), String(Math.round(c.sub)), c.total.toFixed(2), String(Math.round(c.total)), eur(c.sub), eur(c.total)]
+    const hay=[inv.number, inv.clientName, inv.clientAlias, String(c.sub), String(Math.round(c.sub)), c.total.toFixed(2), String(Math.round(c.total)), eur(c.sub), eur(c.total)]
       .join(" ").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
     return hay.includes(q);
   };
@@ -1413,11 +1416,11 @@ function render(){
   let html=`<table><colgroup><col style="width:13%"><col style="width:6%"><col style="width:11%"><col style="width:15%"><col style="width:11%"><col style="width:10%"><col style="width:10%"><col style="width:11%"><col style="width:13%"></colgroup><thead><tr><th>Estado</th><th>Nº</th><th>Fecha</th><th>Cliente</th><th>Base</th><th>IVA</th><th>IRPF</th><th>Total</th><th></th></tr></thead><tbody>`;
   pageRows.forEach(inv=>{
     const c=calc(inv);
-    html+=`<tr>
+    html+=`<tr style="cursor:pointer" onclick="if(!event.target.closest('.rowact')&&!event.target.closest('.st'))openForm('${inv.id}')">
       <td style="text-align:left"><span class="st ${inv.paid?'g':'r'}" onclick="togglePaid('${inv.id}')" title="Clic para cambiar el estado"><span class="switch ${inv.paid?'on':''}"><span class="switch-knob"></span></span><span class="st-label">${inv.paid?'Cobrado':'Por cobrar'}</span></span></td>
       <td style="text-align:left" class="fnum">${escapeHtml(inv.number||'—')}</td>
       <td style="text-align:left">${fmtShortDate(inv.date)}</td>
-      <td class="cli" style="text-align:left;white-space:normal">${escapeHtml((inv.clientName||'—').toUpperCase())}</td>
+      <td class="cli" style="text-align:left;white-space:normal" title="${escapeHtml(inv.clientName||'')}">${escapeHtml(((inv.clientAlias||inv.clientName)||'—').toUpperCase())}</td>
       <td class="num">${eur(c.sub)}</td>
       <td class="num">${eur(c.iva)}</td>
       <td class="num">${eur(c.irpf)}</td>
@@ -1554,7 +1557,7 @@ function buildClientsIndex(){
   const byName={};
   DB.invoices.slice().sort((a,b)=>(a.date||"").localeCompare(b.date||"")).forEach(inv=>{
     const n=(inv.clientName||"").trim(); if(!n) return;
-    byName[normName(n)]={name:n,cif:inv.clientCif||"",street:inv.clientStreet||"",number:inv.clientNumber||"",cp:inv.clientCp||"",city:inv.clientCity||"",country:inv.clientCountry||""};
+    byName[normName(n)]={name:n,alias:inv.clientAlias||"",cif:inv.clientCif||"",street:inv.clientStreet||"",number:inv.clientNumber||"",cp:inv.clientCp||"",city:inv.clientCity||"",country:inv.clientCountry||""};
   });
   CLIENTS_INDEX=byName;
   const dl=document.getElementById("clientsList");
@@ -1563,6 +1566,7 @@ function buildClientsIndex(){
 function onClientName(v){
   const c=CLIENTS_INDEX[normName(v)];
   if(!c) return;
+  document.getElementById("f_cliAlias").value=c.alias||"";
   document.getElementById("f_cliCif").value=c.cif;
   document.getElementById("f_cliStreet").value=c.street;
   document.getElementById("f_cliNumber").value=c.number;
@@ -1590,6 +1594,7 @@ function openForm(id){
   document.getElementById("f_num").value = f? (f.number||"") : suggestNumber();
   document.getElementById("f_date").value = f? f.date : new Date().toISOString().slice(0,10);
   document.getElementById("f_cliName").value = f? (f.clientName||"") : "";
+  document.getElementById("f_cliAlias").value = f? (f.clientAlias||"") : "";
   document.getElementById("f_cliCif").value = f? (f.clientCif||"") : "";
   document.getElementById("f_cliStreet").value = f? (f.clientStreet || (f.clientStreet===undefined&&!f.clientCity? (f.clientAddress||"") : "")) : "";
   document.getElementById("f_cliNumber").value = f? (f.clientNumber||"") : "";
@@ -1687,6 +1692,7 @@ function saveInvoice(thenPdf){
   const data={
     number, date,
     clientName:document.getElementById("f_cliName").value.trim().toUpperCase(),
+    clientAlias:document.getElementById("f_cliAlias").value.trim(),
     clientCif:document.getElementById("f_cliCif").value.trim(),
     clientStreet:document.getElementById("f_cliStreet").value.trim(),
     clientNumber:document.getElementById("f_cliNumber").value.trim(),
@@ -1701,6 +1707,17 @@ function saveInvoice(thenPdf){
   let inv;
   if(editingId){ inv=DB.invoices.find(i=>i.id===editingId); Object.assign(inv,data); }
   else { inv={id:uid(),...data}; DB.invoices.push(inv); }
+  // propagar el alias (también si se deja vacío) a todas las facturas del mismo
+  // cliente: por CIF normalizado si lo hay; si no, por nombre normalizado
+  const cifKey=(data.clientCif||"").replace(/\s/g,"").toUpperCase();
+  const nameKey=normName(data.clientName);
+  DB.invoices.forEach(o=>{
+    if(o.id===inv.id) return;
+    const same = cifKey
+      ? ((o.clientCif||"").replace(/\s/g,"").toUpperCase()===cifKey)
+      : (nameKey!=="" && normName(o.clientName)===nameKey);
+    if(same) o.clientAlias=data.clientAlias;
+  });
   save();
   // saltar al año de la factura
   selYear=yearOf(inv.date); selQuarter=null;
@@ -2162,7 +2179,7 @@ function sanitizeImport(d){
   (Array.isArray(d.invoices)?d.invoices:[]).forEach(i=>{
     if(!i || typeof i!=="object" || !dateOk(i.date)){ skipped.inv++; return; }
     const inv={ id:uid(), number:str(i.number,40), date:i.date,
-      clientName:str(i.clientName,200), clientCif:str(i.clientCif,40),
+      clientName:str(i.clientName,200), clientAlias:str(i.clientAlias,200), clientCif:str(i.clientCif,40),
       clientStreet:str(i.clientStreet,200), clientNumber:str(i.clientNumber,40),
       clientCp:str(i.clientCp,20), clientCity:str(i.clientCity,100),
       clientCountry:str(i.clientCountry,100), clientAddress:str(i.clientAddress,300),
